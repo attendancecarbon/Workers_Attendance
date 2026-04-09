@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Worker Attendance</title>
+
+<style>
+body { font-family: Arial; text-align:center; padding:20px; }
+input, button {
+  padding:12px; margin:8px; width:90%; max-width:300px;
+  font-size:16px;
+}
+video { border:1px solid #ccc; margin-top:10px; }
+img { margin-top:10px; }
+#status { margin-top:15px; font-weight:bold; color:green; }
+</style>
+
+</head>
+<body>
+
+<h2>Worker Attendance</h2>
+
+<input id="workerId" placeholder="Enter Worker ID">
+
+<br>
+
+<video id="camera" width="320" height="240" autoplay></video>
+
+<br>
+<button onclick="takeSelfie()">Take Selfie</button>
+
+<canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+<br>
+<img id="preview" width="160">
+
+<br>
+<button onclick="markAttendance()">Mark Attendance</button>
+
+<br>
+<button onclick="logout()">Logout</button>
+
+<div id="status"></div>
+
+<script>
+
+const API_URL = "https://script.google.com/macros/s/AKfycbz0K0z9goivplEDyG_0Kb_CZLJMB7c1EL9zT5RhOXhhhIJtXCUFA8s-nq6XtwsZvJ-L/exec";
+
+let selfieData = "";
+
+// Auto-fill Worker ID
+window.onload = function() {
+  const saved = localStorage.getItem("workerId");
+  if (saved) document.getElementById("workerId").value = saved;
+};
+
+// Camera start
+navigator.mediaDevices.getUserMedia({ video:true })
+.then(stream => document.getElementById("camera").srcObject = stream)
+.catch(err => alert("Camera error"));
+
+// Capture selfie (compressed)
+function takeSelfie() {
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d");
+
+  ctx.drawImage(camera, 0, 0, 320, 240);
+
+  // COMPRESS IMAGE (CRITICAL)
+  selfieData = canvas.toDataURL("image/jpeg", 0.6).split(',')[1];
+
+  document.getElementById("preview").src =
+    "data:image/jpeg;base64," + selfieData;
+}
+
+// Mark attendance
+function markAttendance() {
+
+  const workerId = document.getElementById("workerId").value;
+
+  if(!workerId) return alert("Enter Worker ID");
+  if(!selfieData) return alert("Take selfie first");
+
+  // Save ID locally
+  localStorage.setItem("workerId", workerId);
+
+  navigator.geolocation.getCurrentPosition(pos => {
+
+    const data = {
+      workerId: workerId,
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      selfie: selfieData
+    };
+
+    sendWithRetry(data);
+
+  }, err => alert("GPS error"));
+
+}
+
+// Retry logic (prevents failure)
+async function sendWithRetry(data, attempt=1) {
+  try {
+
+    const res = await fetch(API_URL, {
+      method: "POST",
+      body: JSON.stringify(data)
+    });
+
+    const result = await res.json();
+
+    if(result.result === "Success"){
+      document.getElementById("status").innerText = "Attendance Successful ✅";
+
+      setTimeout(()=> window.close(), 2000);
+    } else {
+      alert(result.message);
+    }
+
+  } catch(e) {
+    if(attempt < 5){
+      setTimeout(()=> sendWithRetry(data, attempt+1), 2000*attempt);
+    } else {
+      alert("Failed. Will retry later.");
+    }
+  }
+}
+
+// Logout
+function logout(){
+  localStorage.removeItem("workerId");
+  document.getElementById("workerId").value = "";
+  alert("Logged out");
+}
+
+</script>
+
+</body>
+</html>
